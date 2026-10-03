@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Trigger Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alegreya:wght@500;700&family=Alegreya+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --mat:#17202b; --mat-2:#202b39; --line:#33405a; --ink:#ece5d3; --dim:#a3abbb;
+  --gold:#d4b25a; --gold-ink:#241b06; --red:#e3303c; --live:#52c58c;
+  --display:'Alegreya', Georgia, 'Times New Roman', serif;
+  --ui:'Alegreya Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%}
+body{
+  margin:0; min-height:100%; color:var(--ink); font:400 17px/1.45 var(--ui);
+  background:
+    radial-gradient(1200px 700px at 50% -10%, #2a3850 0%, transparent 60%),
+    radial-gradient(circle at 20% 80%, rgba(212,178,90,.05), transparent 40%),
+    var(--mat);
+  background-attachment:fixed;
+}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--gold); outline-offset:3px}
+
+/* Top bar */
+header{
+  position:sticky; top:env(safe-area-inset-top,0px); z-index:5;
+  display:flex; flex-wrap:wrap; align-items:center; gap:12px;
+  padding:14px clamp(14px,3vw,32px);
+  background:rgba(23,32,43,.86); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line);
+}
+h1{font:700 clamp(1.5rem,3vw,2rem)/1 var(--display); margin:0 auto 0 0; letter-spacing:.005em}
+.btn{
+  display:inline-flex; align-items:center; gap:8px; min-height:44px; padding:0 18px;
+  border-radius:999px; border:1px solid var(--line); background:var(--mat-2); cursor:pointer;
+  font-weight:500;
+}
+.btn:hover{border-color:#4b5b7c}
+.btn.primary{background:var(--gold); color:var(--gold-ink); border-color:var(--gold); font-weight:700}
+.btn.danger{border-color:#7a2a31; color:#ffb3b8}
+.btn.icon{width:44px; padding:0; justify-content:center}
+.btn svg{width:20px; height:20px}
+#listenBtn .dot{width:10px;height:10px;border-radius:50%;background:var(--dim)}
+#listenBtn[aria-pressed="true"]{background:#173326; border-color:var(--live); color:#c9f3dc}
+#listenBtn[aria-pressed="true"] .dot{background:var(--live); animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(82,197,140,.7)}50%{box-shadow:0 0 0 6px rgba(82,197,140,0)}}
+
+/* Status strip */
+#strip{
+  display:flex; flex-wrap:wrap; align-items:center; gap:10px 18px;
+  padding:10px clamp(14px,3vw,32px); color:var(--dim); font-size:.95rem; min-height:44px;
+}
+#heard{flex:1 1 260px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+#heard mark{background:none; color:var(--red); font-weight:700}
+#notice{color:#ffcf7a}
+#dismissAll{min-height:36px; padding:0 14px; border-color:var(--red); color:#ffc4c8}
+
+/* Board */
+main{padding:8px clamp(14px,3vw,32px) 48px}
+#grid{
+  display:grid; gap:clamp(14px,2.4vw,28px);
+  grid-template-columns:repeat(auto-fill, minmax(min(170px,42vw), 1fr));
+}
+figure.slot{margin:0; display:flex; flex-direction:column; gap:8px}
+.card{
+  position:relative; display:block; width:100%; aspect-ratio:63/88; padding:0; border:0;
+  border-radius:4.8% / 3.5%; overflow:hidden; cursor:pointer; background:#0d1218;
+  box-shadow:0 10px 24px -10px rgba(0,0,0,.8);
+  transition:transform .15s ease;
+}
+.card:hover{transform:translateY(-3px)}
+.card img{width:100%; height:100%; object-fit:cover; display:block; user-select:none; -webkit-user-drag:none}
+.card .fallback{display:grid; place-items:center; height:100%; padding:12px; text-align:center; font:700 1.1rem var(--display)}
+.card .strobe{position:absolute; inset:0; background:var(--red); opacity:0; pointer-events:none}
+.card .timer{position:absolute; left:0; right:0; bottom:0; height:6px; background:var(--red); transform:scaleX(0); transform-origin:left; pointer-events:none}
+.card .tapnote{
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); padding:6px 12px; border-radius:999px;
+  background:rgba(0,0,0,.72); color:#fff; font-weight:700; font-size:.9rem; white-space:nowrap; opacity:0; pointer-events:none;
+}
+.card.on{
+  animation:jiggle .32s ease-in-out infinite;
+  box-shadow:0 0 0 3px var(--red), 0 0 32px 8px rgba(227,48,60,.65);
+  z-index:2;
+}
+.card.on .strobe{animation:strobe .5s ease-in-out infinite}
+.card.on .timer{animation:countdown var(--dur,20000ms) linear var(--delay,0ms) forwards}
+.card.on .tapnote{opacity:1}
+@keyframes jiggle{
+  0%,100%{transform:rotate(0) translateY(0)}
+  25%{transform:rotate(-3.2deg) translateY(-3px)}
+  75%{transform:rotate(3.2deg) translateY(-3px)}
+}
+@keyframes strobe{0%,100%{opacity:0}50%{opacity:.5}}
+@keyframes countdown{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+@media (prefers-reduced-motion: reduce){
+  .card.on{animation:none}
+  .card.on .strobe{animation-duration:1.4s}
+}
+figcaption{display:flex; flex-wrap:wrap; gap:6px; justify-content:center}
+.chip{padding:2px 10px; border-radius:999px; border:1px solid var(--line); background:var(--mat-2); font-size:.88rem; color:var(--ink)}
+.slot.hot .chip{border-color:var(--red); color:#ffc4c8}
+
+#empty{max-width:34rem; margin:12vh auto 0; text-align:center}
+#empty h2{font:700 1.7rem/1.2 var(--display); margin:0 0 8px}
+#empty p{color:var(--dim); margin:0 0 20px}
+
+/* Dialogs */
+dialog{
+  width:min(440px, calc(100vw - 28px)); padding:22px; border-radius:16px;
+  border:1px solid var(--line); background:var(--mat-2); color:var(--ink);
+  box-shadow:0 30px 80px -20px rgba(0,0,0,.9);
+}
+dialog::backdrop{background:rgba(5,8,12,.68)}
+dialog h2{font:700 1.45rem/1.2 var(--display); margin:0 0 16px}
+label.field{display:block; margin:0 0 14px}
+label.field span{display:block; font-weight:500; margin-bottom:6px}
+label.field small{display:block; color:var(--dim); margin-top:5px; font-size:.85rem}
+input[type=text], input[type=number], select{
+  width:100%; min-height:44px; padding:8px 12px; border-radius:10px;
+  border:1px solid var(--line); background:var(--mat);
+}
+input[type=range]{width:100%; accent-color:var(--gold)}
+label.check{display:flex; align-items:center; gap:10px; margin:0 0 14px; cursor:pointer}
+label.check input{width:20px; height:20px; accent-color:var(--gold)}
+.row{display:flex; flex-wrap:wrap; gap:10px; justify-content:flex-end; margin-top:18px}
+.row .spacer{margin-right:auto}
+.err{color:#ff9aa1; min-height:1.3em; margin:0; font-size:.95rem}
+.editHead{display:flex; gap:14px; align-items:center; margin-bottom:16px}
+.editHead img{width:72px; border-radius:6px}
+.editHead h2{margin:0}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Trigger Tracker</h1>
+  <button class="btn" id="listenBtn" aria-pressed="false"><span class="dot"></span><span class="lbl">Start listening</span></button>
+  <button class="btn primary" id="addBtn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+    Add card
+  </button>
+  <button class="btn icon" id="settingsBtn" aria-label="Settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+  </button>
+</header>
+
+<div id="strip" aria-live="polite">
+  <span id="heard">Mic is off. Tap “Start listening” when the game begins.</span>
+  <span id="notice" hidden></span>
+  <button class="btn" id="dismissAll" hidden>Clear all triggers</button>
+</div>
+
+<main>
+  <div id="grid"></div>
+  <section id="empty" hidden>
+    <h2>No cards on the table yet</h2>
+    <p>Add a card with a triggered ability and the word you’ll say when it triggers, like “attack”, “cast” or “dies”.</p>
+    <button class="btn primary" id="emptyAdd">Add your first card</button>
+  </section>
+</main>
+
+<!-- Add card -->
+<dialog id="addDlg">
+  <h2>Add a card</h2>
+  <label class="field"><span>Card name</span>
+    <input type="text" id="nameIn" list="nameList" autocomplete="off" placeholder="Smothering Tithe">
+    <datalist id="nameList"></datalist>
+  </label>
+  <label class="field"><span>Trigger word</span>
+    <input type="text" id="trigIn" autocomplete="off" placeholder="draw">
+    <small>Separate several with commas, e.g. “attack, block”.</small>
+  </label>
+  <p class="err" id="addErr"></p>
+  <div class="row">
+    <button class="btn" data-close>Cancel</button>
+    <button class="btn primary" id="addSave">Add card</button>
+  </div>
+</dialog>
+
+<!-- Edit card -->
+<dialog id="editDlg">
+  <div class="editHead"><img id="editImg" alt=""><h2 id="editName"></h2></div>
+  <label class="field"><span>Trigger word</span>
+    <input type="text" id="editTrig" autocomplete="off">
+    <small>Separate several with commas.</small>
+  </label>
+  <div class="row">
+    <button class="btn danger spacer" id="editRemove">Remove card</button>
+    <button class="btn" id="editTest">Test trigger</button>
+    <button class="btn primary" id="editSave">Save</button>
+  </div>
+</dialog>
+
+<!-- Settings -->
+<dialog id="setDlg">
+  <h2>Settings</h2>
+  <label class="field"><span>Highlight duration (seconds)</span>
+    <input type="number" id="setDur" min="2" max="600" step="1">
+    <small>Cards also stop when you tap them.</small>
+  </label>
+  <label class="check"><input type="checkbox" id="setJingle"> Play a jingle when a card triggers</label>
+  <label class="field"><span>Jingle volume</span><input type="range" id="setVol" min="0" max="1" step="0.05"></label>
+  <label class="check"><input type="checkbox" id="setVar"> Also match word endings (attack → attacks, attacked)</label>
+  <label class="check"><input type="checkbox" id="setShow"> Show what the mic hears</label>
+  <label class="field"><span>Speech language</span>
+    <select id="setLang">
+      <option value="">Browser default</option>
+      <option value="en-US">English (US)</option>
+      <option value="en-GB">English (UK)</option>
+      <option value="en-AU">English (Australia)</option>
+      <option value="es-ES">Español</option>
+      <option value="fr-FR">Français</option>
+      <option value="de-DE">Deutsch</option>
+      <option value="it-IT">Italiano</option>
+      <option value="pt-BR">Português (Brasil)</option>
+      <option value="ja-JP">日本語</option>
+    </select>
+  </label>
+  <div class="row">
+    <button class="btn spacer" id="setTest">Play jingle</button>
+    <button class="btn primary" data-close>Done</button>
+  </div>
+</dialog>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const store = {
+    get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
+    set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+  };
+  const uid = () => Math.random().toString(36).slice(2, 10);
+  const norm = s => s.toLowerCase().replace(/[’‘]/g, "'").replace(/[^\p{L}\p{N}']+/gu, ' ').trim().replace(/\s+/g, ' ');
+  const parseTriggers = s => [...new Set(s.split(',').map(norm).filter(Boolean))];
+  const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  let cards = store.get('tt.cards', []);
+  const settings = Object.assign(
+    { duration: 20, jingle: true, volume: 0.5, variations: true, showHeard: true, lang: '' },
+    store.get('tt.settings', {})
+  );
+  const saveCards = () => store.set('tt.cards', cards);
+  const saveSettings = () => store.set('tt.settings', settings);
+
+  const grid = $('#grid'), empty = $('#empty'), heard = $('#heard'), notice = $('#notice'), dismissAllBtn = $('#dismissAll');
+  const active = new Map(); // id -> {start, total, timer}
+
+  /* ---------- Board ---------- */
+  function render(){
+    grid.innerHTML = '';
+    empty.hidden = cards.length > 0;
+    for (const c of cards){
+      const fig = document.createElement('figure');
+      fig.className = 'slot';
+      const btn = document.createElement('button');
+      btn.className = 'card';
+      btn.dataset.id = c.id;
+      btn.setAttribute('aria-label', c.name + ', triggers on ' + c.triggers.join(', '));
+      if (c.img){
+        const img = new Image();
+        img.src = c.img; img.alt = ''; img.draggable = false; img.loading = 'lazy';
+        btn.append(img);
+      } else {
+        const f = document.createElement('div'); f.className = 'fallback'; f.textContent = c.name; btn.append(f);
+      }
+      const strobe = document.createElement('span'); strobe.className = 'strobe';
+      const timer = document.createElement('span'); timer.className = 'timer';
+      const note = document.createElement('span'); note.className = 'tapnote'; note.textContent = 'Tap to clear';
+      btn.append(strobe, timer, note);
+      btn.addEventListener('click', () => active.has(c.id) ? deactivate(c.id) : openEdit(c.id));
+
+      const cap = document.createElement('figcaption');
+      for (const t of c.triggers){ const s = document.createElement('span'); s.className = 'chip'; s.textContent = t; cap.append(s); }
+      fig.append(btn, cap);
+      grid.append(fig);
+    }
+    for (const id of active.keys()) paint(id);
+    syncDismissAll();
+  }
+
+  function paint(id){
+    const el = grid.querySelector(`.card[data-id="${id}"]`);
+    if (!el) return;
+    const a = active.get(id);
+    el.parentElement.classList.toggle('hot', !!a);
+    if (a){
+      el.style.setProperty('--dur', a.total + 'ms');
+      el.style.setProperty('--delay', -(Date.now() - a.start) + 'ms');
+      el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
+    } else {
+      el.classList.remove('on');
+    }
+  }
+  const syncDismissAll = () => { dismissAllBtn.hidden = active.size === 0; };
+
+  function activate(id){
+    const prev = active.get(id);
+    if (prev) clearTimeout(prev.timer);
+    const total = Math.max(1, Number(settings.duration) || 20) * 1000;
+    active.set(id, { start: Date.now(), total, timer: setTimeout(() => deactivate(id), total) });
+    paint(id); syncDismissAll();
+  }
+  function deactivate(id){
+    const a = active.get(id);
+    if (a) clearTimeout(a.timer);
+    active.delete(id);
+    paint(id); syncDismissAll();
+  }
+  dismissAllBtn.addEventListener('click', () => [...active.keys()].forEach(deactivate));
+
+  function fire(trigger){
+    const hits = cards.filter(c => c.triggers.includes(trigger));
+    if (!hits.length) return;
+    hits.forEach(c => activate(c.id));
+    jingle();
+  }
+
+  /* ---------- Jingle ---------- */
+  let ac = null, lastJingle = 0;
+  function audio(){
+    if (!ac){ const A = window.AudioContext || window.webkitAudioContext; if (A) ac = new A(); }
+    if (ac && ac.state === 'suspended') ac.resume();
+    return ac;
+  }
+  function jingle(force){
+    if (!settings.jingle && !force) return;
+    const now = performance.now();
+    if (!force && now - lastJingle < 900) return;
+    lastJingle = now;
+    const a = audio(); if (!a) return;
+    const t0 = a.currentTime + 0.02;
+    const master = a.createGain(); master.gain.value = Number(settings.volume); master.connect(a.destination);
+    [659.25, 830.61, 987.77, 1318.51].forEach((f, i) => {
+      const o = a.createOscillator(), g = a.createGain(), t = t0 + i * 0.085;
+      o.type = 'triangle'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.55, t + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + (i === 3 ? 0.7 : 0.3));
+      o.connect(g).connect(master); o.start(t); o.stop(t + 0.75);
+    });
+  }
+
+  /* ---------- Speech ---------- */
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null, listening = false, session = 0, lastHit = '';
+  const fired = new Map(); // "session:index" -> Set of triggers already fired for that phrase
+  let wakeLock = null;
+
+  function allTriggers(){ return [...new Set(cards.flatMap(c => c.triggers))]; }
+  function regexFor(t){
+    const suffix = settings.variations ? "(?:s|es|ed|d|ing|'s)?" : '';
+    return new RegExp('(?:^| )' + reEsc(t) + suffix + '(?= |$)', 'u');
+  }
+  function showNotice(msg){ notice.textContent = msg; notice.hidden = !msg; }
+  function setListenUI(){
+    const b = $('#listenBtn');
+    b.setAttribute('aria-pressed', String(listening));
+    b.querySelector('.lbl').textContent = listening ? 'Listening' : 'Start listening';
+    if (!listening) heard.textContent = 'Mic is off. Tap “Start listening” when the game begins.';
+    else if (!settings.showHeard) heard.textContent = 'Listening for trigger words…';
+  }
+  function showHeard(text, hits){
+    if (!settings.showHeard) return;
+    heard.textContent = '';
+    heard.append('Heard: ');
+    const words = text.trim().split(/\s+/).slice(-14);
+    const hitSet = new Set(hits.flatMap(h => h.split(' ')));
+    words.forEach((w, i) => {
+      if (i) heard.append(' ');
+      if (hitSet.has(norm(w).replace(/(s|es|ed|d|ing|'s)$/, '')) || hitSet.has(norm(w))){
+        const m = document.createElement('mark'); m.textContent = w; heard.append(m);
+      } else heard.append(w);
+    });
+    if (lastHit){ heard.append('   (last trigger: ' + lastHit + ')'); }
+  }
+
+  async function keepAwake(){
+    try{ if ('wakeLock' in navigator && listening && document.visibilityState === 'visible') wakeLock = await navigator.wakeLock.request('screen'); }catch(e){}
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') keepAwake(); });
+
+  function startListening(){
+    if (!SR){ showNotice('Voice listening needs Chrome, Edge or Safari. Firefox doesn’t support speech recognition.'); return; }
+    audio(); // unlock audio on this tap
+    showNotice('');
+    rec = new SR();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = settings.lang || navigator.language || 'en-US';
+    rec.onresult = e => {
+      const triggers = allTriggers().map(t => [t, regexFor(t)]);
+      for (let i = e.resultIndex; i < e.results.length; i++){
+        const text = e.results[i][0].transcript;
+        const n = ' ' + norm(text) + ' ';
+        const key = session + ':' + i;
+        let done = fired.get(key); if (!done){ done = new Set(); fired.set(key, done); }
+        const hits = [];
+        for (const [t, re] of triggers){
+          if (re.test(n.trim())){
+            hits.push(t);
+            if (!done.has(t)){ done.add(t); lastHit = t; fire(t); }
+          }
+        }
+        showHeard(text, hits);
+      }
+    };
+    rec.onerror = e => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed'){
+        listening = false; setListenUI();
+        showNotice('Microphone access was blocked. Allow the mic for this page in your browser’s site settings, then try again.');
+      } else if (e.error === 'network'){
+        showNotice('Speech recognition needs an internet connection in this browser.');
+      } else if (e.error === 'audio-capture'){
+        listening = false; setListenUI();
+        showNotice('No microphone found. Plug one in and try again.');
+      }
+    };
+    rec.onend = () => {
+      if (!listening) return;
+      session++; fired.clear();
+      setTimeout(() => { if (listening){ try{ rec.start(); }catch(err){} } }, 150);
+    };
+    try{ rec.start(); listening = true; }catch(err){ showNotice('Couldn’t start the microphone: ' + err.message); }
+    setListenUI(); keepAwake();
+  }
+  function stopListening(){
+    listening = false;
+    try{ rec && rec.stop(); }catch(e){}
+    try{ wakeLock && wakeLock.release(); }catch(e){}
+    wakeLock = null;
+    setListenUI();
+  }
+  $('#listenBtn').addEventListener('click', () => listening ? stopListening() : startListening());
+
+  /* ---------- Scryfall ---------- */
+  async function lookup(name){
+    const r = await fetch('https://api.scryfall.com/cards/named?fuzzy=' + encodeURIComponent(name), { headers: { Accept: 'application/json' } });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.details || 'No card found with that name.');
+    const uris = j.image_uris || (j.card_faces && j.card_faces[0] && j.card_faces[0].image_uris);
+    return { name: j.name, img: uris ? (uris.normal || uris.large || uris.small) : null };
+  }
+  let acTimer = null, acCtrl = null;
+  $('#nameIn').addEventListener('input', e => {
+    clearTimeout(acTimer);
+    const q = e.target.value.trim();
+    if (q.length < 2) return;
+    acTimer = setTimeout(async () => {
+      try{
+        if (acCtrl) acCtrl.abort();
+        acCtrl = new AbortController();
+        const r = await fetch('https://api.scryfall.com/cards/autocomplete?q=' + encodeURIComponent(q), { signal: acCtrl.signal, headers: { Accept: 'application/json' } });
+        const j = await r.json();
+        const dl = $('#nameList'); dl.innerHTML = '';
+        (j.data || []).slice(0, 12).forEach(n => { const o = document.createElement('option'); o.value = n; dl.append(o); });
+      }catch(err){}
+    }, 220);
+  });
+
+  /* ---------- Dialogs ---------- */
+  document.querySelectorAll('dialog [data-close]').forEach(b => b.addEventListener('click', () => b.closest('dialog').close()));
+
+  const addDlg = $('#addDlg');
+  function openAdd(){
+    $('#nameIn').value = ''; $('#trigIn').value = ''; $('#addErr').textContent = '';
+    addDlg.showModal(); $('#nameIn').focus();
+  }
+  $('#addBtn').addEventListener('click', openAdd);
+  $('#emptyAdd').addEventListener('click', openAdd);
+  async function submitAdd(){
+    const name = $('#nameIn').value.trim();
+    const triggers = parseTriggers($('#trigIn').value);
+    const err = $('#addErr'), btn = $('#addSave');
+    if (!name){ err.textContent = 'Enter a card name.'; $('#nameIn').focus(); return; }
+    if (!triggers.length){ err.textContent = 'Enter at least one trigger word.'; $('#trigIn').focus(); return; }
+    btn.disabled = true; btn.textContent = 'Finding card…'; err.textContent = '';
+    try{
+      const found = await lookup(name);
+      cards.push({ id: uid(), name: found.name, img: found.img, triggers });
+      saveCards(); render(); addDlg.close();
+    }catch(e2){
+      err.textContent = e2.message === 'Failed to fetch' ? 'Couldn’t reach Scryfall. Check your internet connection.' : e2.message;
+    }finally{
+      btn.disabled = false; btn.textContent = 'Add card';
+    }
+  }
+  $('#addSave').addEventListener('click', submitAdd);
+  addDlg.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT'){ e.preventDefault(); submitAdd(); } });
+
+  const editDlg = $('#editDlg'); let editing = null;
+  function openEdit(id){
+    const c = cards.find(x => x.id === id); if (!c) return;
+    editing = id;
+    $('#editImg').src = c.img || ''; $('#editImg').hidden = !c.img;
+    $('#editName').textContent = c.name;
+    $('#editTrig').value = c.triggers.join(', ');
+    editDlg.showModal();
+  }
+  $('#editSave').addEventListener('click', () => {
+    const c = cards.find(x => x.id === editing); if (!c) return editDlg.close();
+    const t = parseTriggers($('#editTrig').value);
+    if (t.length){ c.triggers = t; saveCards(); render(); }
+    editDlg.close();
+  });
+  $('#editRemove').addEventListener('click', () => {
+    deactivate(editing);
+    cards = cards.filter(x => x.id !== editing); saveCards(); render(); editDlg.close();
+  });
+  $('#editTest').addEventListener('click', () => { const id = editing; editDlg.close(); audio(); activate(id); jingle(true); });
+  editDlg.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT'){ e.preventDefault(); $('#editSave').click(); } });
+
+  const setDlg = $('#setDlg');
+  $('#settingsBtn').addEventListener('click', () => {
+    $('#setDur').value = settings.duration;
+    $('#setJingle').checked = settings.jingle;
+    $('#setVol').value = settings.volume;
+    $('#setVar').checked = settings.variations;
+    $('#setShow').checked = settings.showHeard;
+    $('#setLang').value = settings.lang;
+    setDlg.showModal();
+  });
+  $('#setDur').addEventListener('change', e => { settings.duration = Math.min(600, Math.max(2, Number(e.target.value) || 20)); e.target.value = settings.duration; saveSettings(); });
+  $('#setJingle').addEventListener('change', e => { settings.jingle = e.target.checked; saveSettings(); });
+  $('#setVol').addEventListener('input', e => { settings.volume = Number(e.target.value); saveSettings(); });
+  $('#setVar').addEventListener('change', e => { settings.variations = e.target.checked; saveSettings(); });
+  $('#setShow').addEventListener('change', e => { settings.showHeard = e.target.checked; saveSettings(); setListenUI(); });
+  $('#setLang').addEventListener('change', e => {
+    settings.lang = e.target.value; saveSettings();
+    if (listening){ stopListening(); setTimeout(startListening, 250); }
+  });
+  $('#setTest').addEventListener('click', () => jingle(true));
+
+  if (!SR) showNotice('Voice listening needs Chrome, Edge or Safari. Firefox doesn’t support speech recognition.');
+  render(); setListenUI();
+})();
+</script>
+</body>
+</html>
